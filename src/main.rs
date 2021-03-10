@@ -14,7 +14,7 @@ fn main() -> anyhow::Result<()> {
     unsafe {
         let el = EventLoop::new();
         let wb = glutin::window::WindowBuilder::new()
-            .with_title("rust - snippets")
+            .with_title("rust - gpu - snippets")
             .with_inner_size(glutin::dpi::LogicalSize::new(1024.0, 768.0));
         let window = glutin::ContextBuilder::new()
             .with_srgb(true)
