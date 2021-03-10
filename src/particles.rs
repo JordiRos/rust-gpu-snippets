@@ -2,17 +2,27 @@ use anyhow::{Result};
 use std::mem;
 use flink::{f32x4x4};
 
+use crate::input;
+use crate::image;
+use crate::camera;
+
+pub enum Mode {
+    Lines,
+}
+
 const NUM_PARTICLES: usize = 20000;
 const BUFFER_STRIDE: u64 = (mem::size_of::<f32>() * 4) as u64;
 
 #[repr(C)]
-#[derive(Debug)]
 struct LocalsParticles {
-    world_to_view: f32x4x4,
-    view_to_clip: f32x4x4,
+    world_view: f32x4x4,
+    view_proj: f32x4x4,
+    time: f32,
 }
 
 pub struct Particles {
+    mode: Mode,
+    texture: grr::Image,
     vertices: grr::Buffer,
     positions: grr::Buffer,
     pipeline: grr::Pipeline,
@@ -22,9 +32,10 @@ pub struct Particles {
 }
 
 impl Particles {
-    pub fn new(grr: &grr::Device) -> Result<Self> {
+    pub fn new(grr: &grr::Device, mode: Mode) -> Result<Self> {
         unsafe {
             let spirv = include_bytes!(env!("shader.spv"));
+            let texture = image::load_png("assets/particle.png", grr, grr::Format::R8G8B8A8_SRGB, true).unwrap();
 
             let vs = grr.create_shader(
                 grr::ShaderStage::Vertex,
@@ -99,6 +110,8 @@ impl Particles {
             .unwrap();            
 
             Ok(Particles {
+                mode: mode,
+                texture: texture,
                 vertices: vertices,
                 positions: positions,
                 pipeline: pipeline,
@@ -109,30 +122,33 @@ impl Particles {
         }
     }
 
-    pub fn draw(&mut self, grr: &grr::Device, texture: &grr::Image, world_to_view: f32x4x4, view_to_clip: f32x4x4, time: f32) {
+    pub fn update(&mut self, grr: &grr::Device, camera: &camera::Camera, _input: &input::Input, time: f32) {
         unsafe {
-            // update particle positions directly from buffer
-            let time = time;
             let num_particles = self.num_particles;
             let buffer_size = BUFFER_STRIDE * num_particles as u64;
-            let positions = grr.map_buffer::<f32>(self.positions, 0..buffer_size, grr::MappingFlags::UNSYNCHRONIZED);
-            for i in 0..num_particles {
-                let t = time * 0.5;
-                let group = 0;
-                let idx = (i * 4) as usize;
-                let f = i as f32;
-                let ang = t * 0.25 + (i as f32) * 0.005;
-                let offx = (group as f32 + f * 0.01 + t * 0.25).sin() * 0.25;
-                let offz = (group as f32 + f * 0.006 + t * 0.2).sin() * 0.22;
 
-                positions[idx + 0] = ang.sin() * 1.0 + offx;
-                positions[idx + 1] = -1.5 + f * 0.00015;
-                positions[idx + 2] = ang.cos() * 1.0 + offz;
-                positions[idx + 3] = 0.03;
+            match self.mode {
+                Mode::Lines => {
+                    let positions = grr.map_buffer::<f32>(self.positions, 0..buffer_size, grr::MappingFlags::UNSYNCHRONIZED);
+                    for i in 0..num_particles {
+                        let t = time * 2.0;
+                        let group = 0;
+                        let idx = (i * 4) as usize;
+                        let f = i as f32;
+                        let ang = t * 0.25 + (i as f32) * 0.005;
+                        let offx = (group as f32 + f * 0.01 + t * 0.25).sin() * 0.25;
+                        let offz = (group as f32 + f * 0.006 + t * 0.2).sin() * 0.22;
+        
+                        positions[idx + 0] = ang.sin() * 1.0 + offx;
+                        positions[idx + 1] = -1.5 + f * 0.00015;
+                        positions[idx + 2] = ang.cos() * 1.0 + offz;
+                        positions[idx + 3] = 0.03 + (f as f32 * 0.01).sin() * 0.01;
+                    }
+                    grr.unmap_buffer(self.positions);
+                },
             }
-            grr.unmap_buffer(self.positions);
 
-            // state
+            // render
             let color_blend = grr::ColorBlend {
                 attachments: vec![grr::ColorBlendAttachment {
                     blend_enable: true,
@@ -160,8 +176,9 @@ impl Particles {
 
             // particles
             let locals = LocalsParticles {
-                world_to_view: world_to_view,
-                view_to_clip: view_to_clip,
+                world_view: camera.world_view_inv(),
+                view_proj: camera.view_proj(),
+                time: time,
             };
 
             let u_locals = grr.create_buffer_from_host(
@@ -203,7 +220,7 @@ impl Particles {
             grr.bind_image_views(
                 0,
                 &[
-                    texture.as_view(),
+                    self.texture.as_view(),
                 ],
             );
             grr.bind_samplers(0, &[self.sampler]);

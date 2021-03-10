@@ -1,0 +1,24 @@
+[package]
+name = "rust-snippets"
+version = "0.1.0"
+authors = ["Jordi Ros <shine.3p@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+grr = { git = "https://github.com/msiglreith/grr.git" }
+anyhow = "1"
+image = "0.23"
+glutin = "0.26"
+flink = { git = "https://github.com/msiglreith/flink.git" }
+glam = "0.11"
+byteorder = "1"
+
+[build-dependencies]
+spirv-builder = { git = "https://github.com/msiglreith/rust-gpu.git", branch ="gltf" }
+
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1
+
