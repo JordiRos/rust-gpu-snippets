@@ -29,12 +29,12 @@ fn main() -> anyhow::Result<()> {
         );
 
         let begin = Instant::now();
-        let mut camera = camera::Camera::new(5.0);
+        let mut camera = camera::Camera::new(0.40, 5.0);
         let mut input = input::Input::new();
 
         // Modules
         let mut background = background::Background::new(&grr)?;
-        let mut particles = particles::Particles::new(&grr, particles::Mode::Lines)?;
+        let mut particles = particles::Particles::new(&grr, particles::Mode::Field)?;
         
         el.run(move |event, _, control_flow| {
 

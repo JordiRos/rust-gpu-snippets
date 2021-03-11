@@ -21,10 +21,12 @@ impl Input {
     }
 
     pub fn update_mouse_motion(&mut self, (dx, dy): (f64, f64)) {
-        self.mouse_delta.x += dx as f32;
-        self.mouse_delta.y += dy as f32;
-        self.mouse_pos.x += self.mouse_delta.x;
-        self.mouse_pos.y += self.mouse_delta.y;
+        if self.mouse == ElementState::Pressed {
+            self.mouse_delta.x += dx as f32;
+            self.mouse_delta.y += dy as f32;
+            self.mouse_pos.x += self.mouse_delta.x;
+            self.mouse_pos.y += self.mouse_delta.y;
+        }
     }
 
     /*

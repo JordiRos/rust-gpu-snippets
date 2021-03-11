@@ -3,8 +3,9 @@ use flink::{f32x4x4, vec3, Vec3};
 use crate::input;
 
 pub struct Camera {
-    position: Vec3<f32>,
+    fov: f32,
     distance: f32,
+    position: Vec3<f32>,
     world_view: f32x4x4,
     view_proj: f32x4x4,
     world_view_inv: f32x4x4,
@@ -12,10 +13,11 @@ pub struct Camera {
 }
 
 impl Camera {
-    pub fn new(distance: f32) -> Self {
+    pub fn new(fov: f32, distance: f32) -> Self {
         Camera {
-            position: vec3(0.0, 0.0, distance),
+            fov: fov,
             distance: distance,
+            position: vec3(0.0, 0.0, distance),
             world_view: f32x4x4::look_at_inv(vec3(0.0, 0.0, distance), vec3(0.0, 0.0, 1.0)),
             view_proj: f32x4x4::perspective(
                 std::f32::consts::PI * 0.25,
@@ -41,14 +43,14 @@ impl Camera {
 
         self.world_view = f32x4x4::look_at(self.position, self.position);
         self.view_proj = f32x4x4::perspective(
-            std::f32::consts::PI * 0.25,
+            std::f32::consts::PI * self.fov,
             aspect,
             0.1,
             10000.0,
         );
         self.world_view_inv = f32x4x4::look_at_inv(self.position, self.position);
         self.view_proj_inv = f32x4x4::perspective_inv(
-            std::f32::consts::PI * 0.25,
+            std::f32::consts::PI * self.fov,
             aspect,
             0.1,
             10000.0,
