@@ -23,6 +23,10 @@ pub fn saturate(v: f32) -> f32 {
     return clamp(v, 0.0, 1.0);
 }
 
+pub fn lerp(a: f32, b: f32, v: f32) -> f32 {
+    return a + (b - a) * v;
+}
+
 // --------------------------------------------------------------------------------
 // Background
 // --------------------------------------------------------------------------------
@@ -68,6 +72,10 @@ pub fn background_fs(
     let v = saturate(f_view_dir.x - 0.5 * 0.5 + f_view_dir.y * 0.5 - f_view_dir.z * 0.3) * 0.02 + 0.015;
     let sky = vec3(v, v * 0.2, v); 
 
+    // Very dark green
+    //let v = saturate(f_view_dir.x - 0.5 * 0.5 + f_view_dir.y * 0.5 - f_view_dir.z * 0.3) * 0.02 + 0.015;
+    //let sky = vec3(v * 0.2, v, v); 
+
     output.store(vec4(sky.x, sky.y, sky.z, 1.0));
 }
 
@@ -80,8 +88,8 @@ pub fn background_fs(
 pub struct LocalsParticles {
     world_view: f32x4x4,
     view_proj: f32x4x4,
-    time: f32,
     depth: f32,
+    apperture: f32,
 }
 
 #[allow(unused_attributes)]
@@ -97,31 +105,42 @@ pub fn particles_vs(
     #[spirv(location = 0)] mut a_texcoord: Output<f32x3>,
     #[spirv(location = 1)] mut a_color: Output<f32x4>,
 ) {
+    let vertex_id = c_vertex_id.load();
     let instance_id = c_instance_id.load() as f32;
     let locals = u_locals.load();
 
     let position = v_position.load();
     let posscale = v_posscale.load();
     let mut color = v_color.load();
-
-    let mut pos_view = vec4(posscale.x, posscale.y, posscale.z, 1.0) * locals.world_view;
-
-    let depth = pos_view.z - locals.depth;
-    let scale = posscale.w * (abs(locals.depth - pos_view.z) * 1.1 + 1.0);
-    let alpha = 1.0 - abs(locals.depth - pos_view.z) * 0.09;
-
-    pos_view.x += position.x * scale;
-    pos_view.y += position.y * scale;
-    pos_view.z += position.z * scale;
+    let mut alpha = 1.0;
 
     // nice axis coloured (RGB)
     //color.x = color.w * posscale.x * 0.3;
     //color.y = color.w * posscale.y * 0.3;
     //color.z = color.w * posscale.z * 0.3;
 
-    let pos_clip = pos_view * locals.view_proj;
+    if posscale.y > 0.0 || posscale.y < 0.0 {
+        // billboard
+        let mut pos_view = vec4(posscale.x, posscale.y, posscale.z, 1.0) * locals.world_view;
+        let depth = pos_view.z - locals.depth;
+        let scale = posscale.w * (abs(locals.depth - pos_view.z) * lerp(0.0, 10.0, locals.apperture) + 1.0);
+        //let scale = posscale.w * (abs(locals.depth - pos_view.z) * 0.01 + 1.0);
+        alpha = 1.0 - abs(locals.depth - pos_view.z) * lerp(0.0, 1.0, locals.apperture);
 
-    a_position.store(pos_clip);
+        pos_view.x += position.x * scale;
+        pos_view.y += position.y * scale;
+        pos_view.z += position.z * scale;
+        
+        a_position.store(pos_view * locals.view_proj);
+    } else {
+        // horizontal, flag
+        let scale = posscale.w;
+        let mut pos_view = vec4(posscale.x + position.x * scale, posscale.y + position.z * scale, posscale.z + position.y * scale, 1.0) * locals.world_view;
+        let depth = pos_view.z - locals.depth;
+
+        a_position.store(pos_view * locals.view_proj);
+    }
+
     a_texcoord.store(vec3(position.x + 0.5, 0.5 - position.y, alpha));
     a_color.store(color);
 }
@@ -137,10 +156,7 @@ pub fn particles_fs(
     let texture = u_texture.load();
     let texcoord = f_texcoord.load();
     let color = f_color.load();
-
     let tex = texture.sample(spirv_std::glam::Vec2::new(texcoord.x, texcoord.y));
-    let alpha = texcoord.z * tex.w;
 
-    output.store(vec4(tex.x * color.x, tex.y * color.y, tex.z * color.z, color.w) * alpha);
+    output.store(vec4(tex.x * color.x, tex.y * color.y, tex.z * color.z, 1.0) * texcoord.z * tex.w * color.w);
 }
-

@@ -38,11 +38,6 @@ fn get_color(colors: &Vec<f32>, value: f32) -> Vec4<f32> {
     return color;
 }
 
-pub enum Mode {
-    Lines,
-    Field,
-}
-
 const NUM_PARTICLES: usize = 25000;
 const BUFFER_STRIDE: u64 = (mem::size_of::<f32>() * 4) as u64;
 
@@ -50,12 +45,11 @@ const BUFFER_STRIDE: u64 = (mem::size_of::<f32>() * 4) as u64;
 struct LocalsParticles {
     world_view: f32x4x4,
     view_proj: f32x4x4,
-    time: f32,
     depth: f32,
+    apperture: f32,
 }
 
-pub struct Particles {
-    mode: Mode,
+pub struct Effect {
     texture: grr::Image,
     vertices: grr::Buffer,
     positions: grr::Buffer,
@@ -67,8 +61,8 @@ pub struct Particles {
     first_time: bool,
 }
 
-impl Particles {
-    pub fn new(grr: &grr::Device, mode: Mode) -> Result<Self> {
+impl Effect {
+    pub fn new(grr: &grr::Device) -> Result<Self> {
         unsafe {
             let spirv = include_bytes!(env!("shader.spv"));
             let texture = image::load_png("assets/particle.png", grr, grr::Format::R8G8B8A8_SRGB, true).unwrap();
@@ -157,8 +151,7 @@ impl Particles {
             )
             .unwrap();            
 
-            Ok(Particles {
-                mode: mode,
+            Ok(Effect {
                 texture: texture,
                 vertices: vertices,
                 positions: positions,
@@ -177,83 +170,45 @@ impl Particles {
             let num_particles = self.num_particles;
             let buffer_size = BUFFER_STRIDE * num_particles as u64;
 
-            match self.mode {
-                Mode::Lines => {
-                    // line mode
-                    let b = 7.0;
-                    let purple_colour_scheme: Vec<f32> = vec![
-                        0.17 * b, 0.0 * b, 0.83 * b, 1.0 * b, 0.0,
-                        1.0 * b, 0.27 * b, 0.41 * b, 1.0 * b, 1.0,
-                    ];
-                    let positions = grr.map_buffer::<f32>(self.positions, 0..buffer_size, grr::MappingFlags::UNSYNCHRONIZED);
-                    let colors = grr.map_buffer::<f32>(self.colors, 0..buffer_size, grr::MappingFlags::UNSYNCHRONIZED);
-                    for i in 0..num_particles {
-                        let t = time * 2.0;
-                        let idx = (i * 4) as usize;
-                        let f = i as f32;
-                        let ang = t * 0.25 + (i as f32) * 0.005;
-                        let offx = (f * 0.012 + t * 0.85).sin() * 0.31;
-                        let offz = (f * 0.015 + t * 1.32).sin() * 0.26;
-        
-                        positions[idx + 0] = ang.sin() * 2.0 + offx;
-                        positions[idx + 1] = -3.5 + f * 0.0003;
-                        positions[idx + 2] = ang.cos() * 2.0 + offz;
-                        positions[idx + 3] = 0.04;
-                        
-                        if self.first_time {
-                            let v  = (idx as f32 * 2.3).sin() * 0.5 + 0.5;
-                            let color = get_color(&purple_colour_scheme, v);
-                            colors[idx + 0] = color.x;
-                            colors[idx + 1] = color.y;
-                            colors[idx + 2] = color.z;
-                            colors[idx + 3] = color.w;
-                        }
-                    }
-                    grr.unmap_buffer(self.positions);
-                    grr.unmap_buffer(self.colors);
-                },
-                Mode::Field => {
-                    let b = 7.0;
-                    let purple_colour_scheme: Vec<f32> = vec![
-                        0.17, 0.0, 0.83, 1.0, 0.0,
-                        0.28, 0.0, 0.36, 1.0, 0.5,
-                        0.26, 0.0, 0.06, 1.0, 0.99,
-                        1.0 * b, 0.27 * b, 0.41 * b, 1.0 * b, 1.0,
-                    ];
+            let b = 3.0;
+            let purple_colour_scheme: Vec<f32> = vec![
+                0.17, 0.0, 0.83, 1.0, 0.0,
+                0.28, 0.0, 0.36, 1.0, 0.5,
+                0.26, 0.0, 0.06, 1.0, 0.99,
+                1.0 * b, 0.27 * b, 0.41 * b, 1.0 * b, 1.0,
+            ];
 
-                    // field mode, with dof
-                    let grid_size = 150;
-                    let num_particles = grid_size * grid_size;
-                    // positions
-                    let positions = grr.map_buffer::<f32>(self.positions, 0..buffer_size, grr::MappingFlags::UNSYNCHRONIZED);
-                    let colors = grr.map_buffer::<f32>(self.colors, 0..buffer_size, grr::MappingFlags::UNSYNCHRONIZED);
-                    for i in 0..grid_size {
-                        for j in 0..grid_size {
-                            let idx = (j + i * grid_size) * 4;
-                            let t = time * 1.0;
-                            let len = 30.0;
-                            let y = len * ((i as f32 / grid_size as f32) - 0.5);
-                            let x = len * ((j as f32 / grid_size as f32) - 0.5);
-            
-                            positions[idx + 0] = x + (t * 1.21 + x * 18.2).sin() * 0.07 + (t * 1.32 + y * 21.2).cos() * 0.08;
-                            positions[idx + 1] = (t * 0.8 + x * 2.14).sin() * 0.25 + (t * 1.25 + y * 1.33).cos() * 0.20 + (t * 0.33 + idx as f32 * 0.42).cos() * 0.05;
-                            positions[idx + 2] = y + (t * 0.37 + y * 18.4).sin() * 0.09 + (t * 1.14 + x * 14.3).cos() * 0.05;
-                            positions[idx + 3] = 0.09 + (idx as f32 * 24.3).cos() * 0.03;
-                            
-                            if self.first_time {
-                                let v  = (idx as f32 * 2.3).sin() * 0.5 + 0.5;
-                                let color = get_color(&purple_colour_scheme, v);
-                                colors[idx + 0] = color.x;
-                                colors[idx + 1] = color.y;
-                                colors[idx + 2] = color.z;
-                                colors[idx + 3] = color.w;
-                            }
-                        }
+            // field mode, with dof
+            let grid_size = 150;
+            let num_particles = grid_size * grid_size;
+            // positions
+            let positions = grr.map_buffer::<f32>(self.positions, 0..buffer_size, grr::MappingFlags::UNSYNCHRONIZED);
+            let colors = grr.map_buffer::<f32>(self.colors, 0..buffer_size, grr::MappingFlags::UNSYNCHRONIZED);
+            for i in 0..grid_size {
+                for j in 0..grid_size {
+                    let idx = (j + i * grid_size) * 4;
+                    let t = time * 1.0;
+                    let len = 30.0;
+                    let y = len * ((i as f32 / grid_size as f32) - 0.5);
+                    let x = len * ((j as f32 / grid_size as f32) - 0.5);
+    
+                    positions[idx + 0] = x + (t * 1.21 + x * 18.2).sin() * 0.07 + (t * 1.32 + y * 21.2).cos() * 0.08;
+                    positions[idx + 1] = (t * 0.8 + x * 2.14).sin() * 0.25 + (t * 1.25 + y * 1.33).cos() * 0.20 + (t * 0.33 + idx as f32 * 0.42).cos() * 0.05;
+                    positions[idx + 2] = y + (t * 0.37 + y * 18.4).sin() * 0.09 + (t * 1.14 + x * 14.3).cos() * 0.05;
+                    positions[idx + 3] = 0.1 + (idx as f32 * 24.3).cos() * 0.03;
+                    
+                    if self.first_time {
+                        let v  = (idx as f32 * 2.3).sin() * 0.5 + 0.5;
+                        let color = get_color(&purple_colour_scheme, v);
+                        colors[idx + 0] = color.x;
+                        colors[idx + 1] = color.y;
+                        colors[idx + 2] = color.z;
+                        colors[idx + 3] = color.w;
                     }
-                    grr.unmap_buffer(self.positions);
-                    grr.unmap_buffer(self.colors);
-                },
+                }
             }
+            grr.unmap_buffer(self.positions);
+            grr.unmap_buffer(self.colors);
             self.first_time = false;
 
             // render
@@ -286,8 +241,8 @@ impl Particles {
             let locals = LocalsParticles {
                 world_view: camera.world_view_inv(),
                 view_proj: camera.view_proj(),
-                time: time,
                 depth: -3.5,
+                apperture: 0.10,
             };
 
             let u_locals = grr.create_buffer_from_host(
@@ -339,7 +294,7 @@ impl Particles {
                 ],
             );
             grr.bind_samplers(0, &[self.sampler]);
-            grr.draw(grr::Primitive::TriangleStrip, 0..4, 0..num_particles);
+            grr.draw(grr::Primitive::TriangleStrip, 0..4, 0..(num_particles * 4) as u32);
 
             // end
             grr.delete_buffer(u_locals);

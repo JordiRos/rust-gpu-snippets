@@ -8,7 +8,9 @@ mod input;
 mod image;
 mod camera;
 mod background;
-mod particles;
+mod fx_field;
+mod fx_lines;
+mod fx_spiral;
 
 fn main() -> anyhow::Result<()> {
     unsafe {
@@ -34,7 +36,9 @@ fn main() -> anyhow::Result<()> {
 
         // Modules
         let mut background = background::Background::new(&grr)?;
-        let mut particles = particles::Particles::new(&grr, particles::Mode::Field)?;
+        //let mut effect = fx_field::Effect::new(&grr)?;
+        //let mut effect = fx_lines::Effect::new(&grr)?;
+        let mut effect = fx_spiral::Effect::new(&grr)?;
         
         el.run(move |event, _, control_flow| {
 
@@ -74,7 +78,7 @@ fn main() -> anyhow::Result<()> {
         
                     // modules
                     background.update(&grr, &camera, &input, time);
-                    particles.update(&grr, &camera, &input, time);
+                    effect.update(&grr, &camera, &input, time);
 
                     window.swap_buffers().unwrap();
                 },
